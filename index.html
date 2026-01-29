@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fantasy FFCV</title>
+    
+    <!-- 
+    ============================================================================
+    INSTRUCCIONES DE CONFIGURACIÓN DE FIREBASE
+    ============================================================================
+    
+    1. Ve a https://console.firebase.google.com/
+    2. Crea un nuevo proyecto o selecciona uno existente
+    3. En la configuración del proyecto, agrega una aplicación web (ícono </>)
+    4. Copia las credenciales que te proporciona Firebase
+    5. Pega esas credenciales en el objeto 'firebaseConfig' más abajo (línea ~180)
+    6. Habilita servicios en Firebase Console:
+       - Authentication > Sign-in method > Email/Password (activar)
+       - Firestore Database > Crear base de datos (modo producción o test)
+    7. Reglas de Firestore recomendadas (Firestore Database > Rules):
+       
+       rules_version = '2';
+       service cloud.firestore {
+         match /databases/{database}/documents {
+           match /users/{userId} {
+             allow read, write: if request.auth != null && request.auth.uid == userId;
+           }
+           match /players/{playerId} {
+             allow read: if request.auth != null;
+             allow write: if false; // Solo lectura para jugadores
+           }
+         }
+       }
+    
+    ============================================================================
+    IMPORTANTE: GESTIÓN DE CORS PARA DATOS DE ISQUAD
+    ============================================================================
+    
+    Las URLs de Isquad tienen restricciones CORS y no permiten peticiones directas
+    desde el navegador. Para solucionarlo tienes 3 opciones:
+    
+    OPCIÓN 1 - Google Apps Script (RECOMENDADO):
+    1. Ve a https://script.google.com/
+    2. Crea un nuevo proyecto
+    3. Pega este código:
+    
+    function doGet(e) {
+      const url = e.parameter.url;
+      if (!url) return ContentService.createTextOutput('No URL provided');
+      
+      try {
+        const response = UrlFetchApp.fetch(url);
+        const content = response.getContentText();
+        return ContentService
+          .createTextOutput(content)
+          .setMimeType(ContentService.MimeType.TEXT);
+      } catch(error) {
+        return ContentService.createTextOutput('Error: ' + error);
+      }
+    }
+    
+    4. Despliega como Web App (Deploy > New deployment > Web app)
+    5. Permisos: Execute as "Me", Who has access "Anyone"
+    6. Copia la URL del deployment y pégala en PROXY_URL (línea ~185)
+    
+    OPCIÓN 2 - Extensión de navegador CORS:
+    - Instala "CORS Unblock" o similar (solo para desarrollo)
+    
+    OPCIÓN 3 - Backend propio:
+    - Crea un endpoint en Node.js/Python que haga de proxy
+    
+    ============================================================================
+    URLs DE LAS LIGAS FFCV
+    ============================================================================
+    
+    Lliga Comunitat Norte:
+    https://resultadosffcv.isquad.es/total_partidos.php?id_temp=21&id_modalidad=33327&id_competicion=29509377
+    
+    1ª FFCV G2:
+    https://resultadosffcv.isquad.es/total_partidos.php?id_temp=21&id_modalidad=33327&id_competicion=29509166
+    
+    2ª FFCV G4:
+    https://resultadosffcv.isquad.es/total_partidos.php?id_temp=21&id_modalidad=33327&id_competicion=29509171
+    
+    3ª FFCV G7:
+    https://resultadosffcv.isquad.es/total_partidos.php?id_temp=21&id_modalidad=33327&id_competicion=29509180
+    
+    ============================================================================
+    -->
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600;700&family=Bebas+Neue&display=swap');
+        
+        :root {
+            --navy: #0A1929;
+            --navy-light: #1A2F44;
+            --navy-dark: #050D16;
+            --gold: #FFB800;
+            --gold-dark: #D99600;
+            --gold-light: #FFC933;
+            --white: #FFFFFF;
+            --gray: #8B9DAF;
+            --gray-dark: #4A5A6B;
+            --success: #00D97E;
+            --danger: #FF3B3B;
+            --gradient-primary: linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+            --gradient-gold: linear-gradient(135deg, var(--gold-dark) 0%, var(--gold-light) 100%);
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.15);
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.35);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background: var(--navy-dark);
+            color: var(--white);
+            min-height: 100vh;
+            padding-bottom: 80px;
+            overflow-x: hidden;
+        }
+        
+        /* Header */
+        .header {
+            background: var(--gradient-primary);
+            padding: 1.2rem 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-lg);
+            border-bottom: 3px solid var(--gold);
+        }
+        
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 2rem;
+            letter-spacing: 2px;
+            background: var(--gradient-gold);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 30px rgba(255, 184, 0, 0.3);
+        }
+        
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.3rem;
+        }
+        
+        .user-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--gold);
+        }
+        
+        .user-budget {
+            font-size: 0.85rem;
+            color: var(--gray);
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        
+        .budget-amount {
+            color: var(--gold);
+            font-weight: 700;
+            font-size: 1rem;
+        }
+        
+        /* Main Content */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1.5rem 1rem;
+        }
+        
+        .view {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .view.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Auth Screen */
+        .auth-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+            background: radial-gradient(circle at 50% 50%, var(--navy-light) 0%, var(--navy-dark) 100%);
+        }
+        
+        .auth-box {
+            background: var(--navy);
+            border-radius: 16px;
+            padding: 2.5rem 2rem;
+            box-shadow: var(--shadow-lg);
+            max-width: 400px;
+            width: 100%;
+            border: 1px solid rgba(255, 184, 0, 0.2);
+        }
+        
+        .auth-logo {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 3rem;
+            text-align: center;
+            background: var(--gradient-gold);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+            letter-spacing: 3px;
+        }
+        
+        .auth-subtitle {
+            text-align: center;
+            color: var(--gray);
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--gold);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 0.9rem 1rem;
+            background: var(--navy-light);
+            border: 2px solid var(--gray-dark);
+            border-radius: 8px;
+            color: var(--white);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--gold);
+            box-shadow: 0 0 0 3px rgba(255, 184, 0, 0.1);
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn-primary {
+            background: var(--gradient-gold);
+            color: var(--navy-dark);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .btn-secondary {
+            background: transparent;
+            color: var(--gold);
+            border: 2px solid var(--gold);
+            margin-top: 1rem;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 184, 0, 0.1);
+        }
+        
+        .auth-switch {
+            text-align: center;
+            margin-top: 1.5rem;
+            color: var(--gray);
+            font-size: 0.9rem;
+        }
+        
+        .auth-switch button {
+            background: none;
+            border: none;
+            color: var(--gold);
+            text-decoration: underline;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 600;
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--navy);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--navy-light);
+            margin-bottom: 1rem;
+        }
+        
+        .card-title {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 1.8rem;
+            color: var(--gold);
+            margin-bottom: 1rem;
+            letter-spacing: 1px;
+        }
+        
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: var(--gradient-primary);
+            border-radius: 12px;
+            padding: 1.5rem 1rem;
+            text-align: center;
+            border: 2px solid var(--gold);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-gold);
+        }
+        
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--gray);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-value {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 2.5rem;
+            color: var(--gold);
+            line-height: 1;
+        }
+        
+        /* Player List */
+        .player-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .player-item {
+            background: var(--navy-light);
+            border-radius: 10px;
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--gray-dark);
+            transition: all 0.3s ease;
+        }
+        
+        .player-item:hover {
+            border-color: var(--gold);
+            transform: translateX(5px);
+        }
+        
+        .player-info {
+            flex: 1;
+        }
+        
+        .player-name {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--white);
+            margin-bottom: 0.3rem;
+        }
+        
+        .player-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.85rem;
+            color: var(--gray);
+        }
+        
+        .player-team {
+            color: var(--gold);
+        }
+        
+        .player-position {
+            padding: 0.2rem 0.6rem;
+            background: var(--navy);
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.75rem;
+        }
+        
+        .player-price {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--gold);
+            margin: 0 1rem;
+        }
+        
+        .player-points {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--success);
+            margin: 0 1rem;
+        }
+        
+        .btn-small {
+            padding: 0.6rem 1.2rem;
+            border: none;
+            border-radius: 6px;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+        }
+        
+        .btn-buy {
+            background: var(--success);
+            color: var(--white);
+        }
+        
+        .btn-sell {
+            background: var(--danger);
+            color: var(--white);
+        }
+        
+        .btn-buy:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 217, 126, 0.4);
+        }
+        
+        .btn-sell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(255, 59, 59, 0.4);
+        }
+        
+        .btn-buy:disabled,
+        .btn-sell:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Search and Filters */
+        .search-bar {
+            margin-bottom: 1.5rem;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 1rem;
+            background: var(--navy-light);
+            border: 2px solid var(--gray-dark);
+            border-radius: 8px;
+            color: var(--white);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1rem;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: var(--gold);
+        }
+        
+        .filters {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+        }
+        
+        .filter-btn {
+            padding: 0.6rem 1.2rem;
+            border: 2px solid var(--gray-dark);
+            border-radius: 20px;
+            background: transparent;
+            color: var(--gray);
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.3s ease;
+        }
+        
+        .filter-btn.active {
+            background: var(--gold);
+            color: var(--navy-dark);
+            border-color: var(--gold);
+        }
+        
+        /* Bottom Navigation */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--navy);
+            border-top: 3px solid var(--gold);
+            display: flex;
+            justify-content: space-around;
+            padding: 0.8rem 0;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+            z-index: 1000;
+        }
+        
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3rem;
+            cursor: pointer;
+            flex: 1;
+            padding: 0.5rem;
+            border: none;
+            background: transparent;
+            color: var(--gray);
+            transition: all 0.3s ease;
+            font-family: 'Rajdhani', sans-serif;
+        }
+        
+        .nav-item.active {
+            color: var(--gold);
+        }
+        
+        .nav-icon {
+            font-size: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .nav-item.active .nav-icon {
+            transform: scale(1.2);
+        }
+        
+        .nav-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 3rem 1rem;
+        }
+        
+        .spinner {
+            border: 4px solid var(--navy-light);
+            border-top: 4px solid var(--gold);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--gray);
+        }
+        
+        .empty-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        /* Rankings */
+        .ranking-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--navy-light);
+            border-radius: 10px;
+            margin-bottom: 0.8rem;
+            border: 1px solid var(--gray-dark);
+        }
+        
+        .ranking-position {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 2rem;
+            color: var(--gold);
+            min-width: 40px;
+            text-align: center;
+        }
+        
+        .ranking-info {
+            flex: 1;
+        }
+        
+        .ranking-name {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--white);
+        }
+        
+        .ranking-team {
+            font-size: 0.85rem;
+            color: var(--gray);
+        }
+        
+        .ranking-points {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 1.8rem;
+            color: var(--success);
+        }
+        
+        /* Error Messages */
+        .error-message {
+            background: rgba(255, 59, 59, 0.15);
+            border: 2px solid var(--danger);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            color: var(--danger);
+            font-weight: 600;
+        }
+        
+        .success-message {
+            background: rgba(0, 217, 126, 0.15);
+            border: 2px solid var(--success);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            color: var(--success);
+            font-weight: 600;
+        }
+        
+        /* Responsive */
+        @media (min-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            
+            .bottom-nav {
+                left: 50%;
+                transform: translateX(-50%);
+                max-width: 600px;
+                border-radius: 20px 20px 0 0;
+            }
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Auth Screen -->
+    <div id="authScreen" class="auth-container">
+        <div class="auth-box">
+            <div class="auth-logo">FANTASY FFCV</div>
+            <div class="auth-subtitle">Gestiona tu equipo de futsal</div>
+            
+            <div id="loginForm">
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="loginEmail" class="form-input" placeholder="tu@email.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contraseña</label>
+                    <input type="password" id="loginPassword" class="form-input" placeholder="••••••••">
+                </div>
+                <button onclick="login()" class="btn btn-primary">Iniciar Sesión</button>
+                <div class="auth-switch">
+                    ¿No tienes cuenta? <button onclick="showRegister()">Regístrate</button>
+                </div>
+            </div>
+            
+            <div id="registerForm" class="hidden">
+                <div class="form-group">
+                    <label class="form-label">Nombre</label>
+                    <input type="text" id="registerName" class="form-input" placeholder="Tu nombre">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" id="registerEmail" class="form-input" placeholder="tu@email.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Contraseña</label>
+                    <input type="password" id="registerPassword" class="form-input" placeholder="••••••••">
+                </div>
+                <button onclick="register()" class="btn btn-primary">Crear Cuenta</button>
+                <div class="auth-switch">
+                    ¿Ya tienes cuenta? <button onclick="showLogin()">Inicia sesión</button>
+                </div>
+            </div>
+            
+            <div id="authError" class="error-message hidden"></div>
+        </div>
+    </div>
+    
+    <!-- Main App -->
+    <div id="mainApp" class="hidden">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">FANTASY FFCV</div>
+                <div class="user-info">
+                    <div class="user-name" id="userName">Usuario</div>
+                    <div class="user-budget">
+                        Presupuesto: <span class="budget-amount" id="userBudget">20.0M</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Main Content -->
+        <main class="container">
+            <!-- Home View -->
+            <div id="homeView" class="view active">
+                <div class="card">
+                    <h2 class="card-title">Estadísticas</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Puntos</div>
+                            <div class="stat-value" id="totalPoints">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Jugadores</div>
+                            <div class="stat-value" id="totalPlayers">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Valor Equipo</div>
+                            <div class="stat-value" id="teamValue">0M</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Ranking</div>
+                            <div class="stat-value" id="userRanking">-</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2 class="card-title">Últimas Actualizaciones</h2>
+                    <div id="recentUpdates">
+                        <div class="empty-state">
+                            <div class="empty-icon">📢</div>
+                            <p>No hay actualizaciones recientes</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Market View -->
+            <div id="marketView" class="view">
+                <div class="card">
+                    <h2 class="card-title">Mercado de Fichajes</h2>
+                    
+                    <div class="search-bar">
+                        <input type="text" id="searchPlayer" class="search-input" 
+                               placeholder="🔍 Buscar jugador...">
+                    </div>
+                    
+                    <div class="filters">
+                        <button class="filter-btn active" onclick="filterPlayers('all')">Todos</button>
+                        <button class="filter-btn" onclick="filterPlayers('Portero')">Porteros</button>
+                        <button class="filter-btn" onclick="filterPlayers('Cierre')">Cierres</button>
+                        <button class="filter-btn" onclick="filterPlayers('Ala')">Alas</button>
+                        <button class="filter-btn" onclick="filterPlayers('Pívot')">Pívots</button>
+                    </div>
+                    
+                    <div id="playerList" class="player-list">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Cargando jugadores...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- My Team View -->
+            <div id="teamView" class="view">
+                <div class="card">
+                    <h2 class="card-title">Mi Plantilla</h2>
+                    
+                    <div id="myTeamList" class="player-list">
+                        <div class="empty-state">
+                            <div class="empty-icon">⚽</div>
+                            <p>No tienes jugadores en tu equipo</p>
+                            <p style="margin-top: 0.5rem; font-size: 0.9rem;">Ve al mercado para fichar</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <button onclick="logout()" class="btn btn-secondary">Cerrar Sesión</button>
+            </div>
+            
+            <!-- Rankings View -->
+            <div id="rankingsView" class="view">
+                <div class="card">
+                    <h2 class="card-title">Clasificación</h2>
+                    
+                    <div id="rankingsList">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Cargando clasificación...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- Bottom Navigation -->
+        <nav class="bottom-nav">
+            <button class="nav-item active" onclick="switchView('home')">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Inicio</span>
+            </button>
+            <button class="nav-item" onclick="switchView('market')">
+                <span class="nav-icon">🛒</span>
+                <span class="nav-label">Mercado</span>
+            </button>
+            <button class="nav-item" onclick="switchView('team')">
+                <span class="nav-icon">👥</span>
+                <span class="nav-label">Mi Equipo</span>
+            </button>
+            <button class="nav-item" onclick="switchView('rankings')">
+                <span class="nav-icon">🏆</span>
+                <span class="nav-label">Ranking</span>
+            </button>
+        </nav>
+    </div>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    
+    <script>
+        // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyAhf0rbXN6JYM7rkHRRfV4RBAj3uvA9rNM",
+  authDomain: "fantasy-ffcv.firebaseapp.com",
+  projectId: "fantasy-ffcv",
+  storageBucket: "fantasy-ffcv.firebasestorage.app",
+  messagingSenderId: "316685818077",
+  appId: "1:316685818077:web:d0c0e73a7faa47f8502334",
+  measurementId: "G-B5VLVJGPBP"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+        // ============================================================================
+        // INICIALIZACIÓN DE FIREBASE
+        // ============================================================================
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        
+        // Estado global
+        let currentUser = null;
+        let userData = null;
+        let allPlayers = [];
+        let userTeam = [];
+        let currentFilter = 'all';
+        
+        // ============================================================================
+        // FUNCIONES DE AUTENTICACIÓN
+        // ============================================================================
+        
+        function showRegister() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
+            document.getElementById('authError').classList.add('hidden');
+        }
+        
+        function showLogin() {
+            document.getElementById('registerForm').classList.add('hidden');
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('authError').classList.add('hidden');
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('authError');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            setTimeout(() => errorDiv.classList.add('hidden'), 5000);
+        }
+        
+        async function register() {
+            const name = document.getElementById('registerName').value.trim();
+            const email = document.getElementById('registerEmail').value.trim();
+            const password = document.getElementById('registerPassword').value;
+            
+            if (!name || !email || !password) {
+                showError('Por favor, completa todos los campos');
+                return;
+            }
+            
+            if (password.length < 6) {
+                showError('La contraseña debe tener al menos 6 caracteres');
+                return;
+            }
+            
+            try {
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const user = userCredential.user;
+                
+                // Crear perfil en Firestore
+                await db.collection('users').doc(user.uid).set({
+                    name: name,
+                    email: email,
+                    budget: 20000000, // 20M
+                    points: 0,
+                    team: [],
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                console.log('Usuario registrado exitosamente');
+            } catch (error) {
+                console.error('Error en registro:', error);
+                showError(getErrorMessage(error.code));
+            }
+        }
+        
+        async function login() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!email || !password) {
+                showError('Por favor, completa todos los campos');
+                return;
+            }
+            
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+            } catch (error) {
+                console.error('Error en login:', error);
+                showError(getErrorMessage(error.code));
+            }
+        }
+        
+        function logout() {
+            auth.signOut();
+        }
+        
+        function getErrorMessage(code) {
+            const errors = {
+                'auth/email-already-in-use': 'Este email ya está registrado',
+                'auth/invalid-email': 'Email inválido',
+                'auth/user-not-found': 'Usuario no encontrado',
+                'auth/wrong-password': 'Contraseña incorrecta',
+                'auth/weak-password': 'Contraseña demasiado débil',
+                'auth/network-request-failed': 'Error de conexión'
+            };
+            return errors[code] || 'Ha ocurrido un error. Inténtalo de nuevo.';
+        }
+        
+        // Listener de cambios de autenticación
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                currentUser = user;
+                await loadUserData();
+                document.getElementById('authScreen').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                await initializeApp();
+            } else {
+                currentUser = null;
+                userData = null;
+                document.getElementById('mainApp').classList.add('hidden');
+                document.getElementById('authScreen').classList.remove('hidden');
+            }
+        });
+        
+        // ============================================================================
+        // FUNCIONES DE DATOS DE USUARIO
+        // ============================================================================
+        
+        async function loadUserData() {
+            try {
+                const doc = await db.collection('users').doc(currentUser.uid).get();
+                if (doc.exists) {
+                    userData = doc.data();
+                    userTeam = userData.team || [];
+                    updateUserDisplay();
+                }
+            } catch (error) {
+                console.error('Error cargando datos de usuario:', error);
+            }
+        }
+        
+        async function saveUserData() {
+            try {
+                await db.collection('users').doc(currentUser.uid).update(userData);
+            } catch (error) {
+                console.error('Error guardando datos:', error);
+            }
+        }
+        
+        function updateUserDisplay() {
+            document.getElementById('userName').textContent = userData.name;
+            document.getElementById('userBudget').textContent = formatMoney(userData.budget);
+            document.getElementById('totalPoints').textContent = userData.points || 0;
+            document.getElementById('totalPlayers').textContent = userTeam.length;
+            
+            const teamValue = calculateTeamValue();
+            document.getElementById('teamValue').textContent = formatMoney(teamValue);
+        }
+        
+        function formatMoney(amount) {
+            return (amount / 1000000).toFixed(1) + 'M';
+        }
+        
+        function calculateTeamValue() {
+            return userTeam.reduce((sum, playerId) => {
+                const player = allPlayers.find(p => p.id === playerId);
+                return sum + (player ? player.price : 0);
+            }, 0);
+        }
+        
+        // ============================================================================
+        // INICIALIZACIÓN DE LA APP
+        // ============================================================================
+        
+        async function initializeApp() {
+            await loadPlayers();
+            displayMarketPlayers();
+            displayMyTeam();
+            loadRankings();
+            
+            // Listener de búsqueda
+            document.getElementById('searchPlayer').addEventListener('input', (e) => {
+                displayMarketPlayers(e.target.value);
+            });
+        }
+        
+        // ============================================================================
+        // GESTIÓN DE JUGADORES
+        // ============================================================================
+        
+        async function loadPlayers() {
+            // NOTA: Esta es una implementación de ejemplo con datos mock
+            // En producción, necesitarás hacer scraping de las URLs de Isquad
+            // usando el proxy de Google Apps Script
+            
+            try {
+                // Intentar cargar desde Firestore
+                const snapshot = await db.collection('players').get();
+                
+                if (snapshot.empty) {
+                    // Si no hay jugadores, crear datos de ejemplo
+                    allPlayers = generateMockPlayers();
+                    
+                    // Opcionalmente guardar en Firestore
+                    // const batch = db.batch();
+                    // allPlayers.forEach(player => {
+                    //     const ref = db.collection('players').doc(player.id);
+                    //     batch.set(ref, player);
+                    // });
+                    // await batch.commit();
+                } else {
+                    allPlayers = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                }
+            } catch (error) {
+                console.error('Error cargando jugadores:', error);
+                allPlayers = generateMockPlayers();
+            }
+        }
+        
+        // Función para generar jugadores de ejemplo
+        function generateMockPlayers() {
+            const teams = ['Burjassot', 'Catarroja', 'Alboraya', 'Manises', 'Torrent', 'Mislata'];
+            const positions = ['Portero', 'Cierre', 'Ala', 'Pívot'];
+            const names = [
+                'Carlos García', 'Miguel López', 'David Martínez', 'Javier Rodríguez',
+                'Antonio Fernández', 'Juan Sánchez', 'Francisco Pérez', 'Manuel Gómez',
+                'José Torres', 'Luis Ramírez', 'Pedro Navarro', 'Rafael Ruiz',
+                'Sergio Díaz', 'Alberto Moreno', 'Fernando Jiménez', 'Pablo Romero',
+                'Adrián Castro', 'Ángel Ortiz', 'Daniel Rubio', 'Víctor Molina'
+            ];
+            
+            return names.map((name, index) => ({
+                id: `player_${index + 1}`,
+                name: name,
+                team: teams[Math.floor(Math.random() * teams.length)],
+                position: positions[Math.floor(Math.random() * positions.length)],
+                price: Math.floor(Math.random() * 3000000) + 1000000, // 1M-4M
+                points: Math.floor(Math.random() * 50),
+                stats: {
+                    matches: Math.floor(Math.random() * 15),
+                    goals: Math.floor(Math.random() * 10),
+                    assists: Math.floor(Math.random() * 8),
+                    redCards: Math.floor(Math.random() * 2)
+                }
+            }));
+        }
+        
+        // ============================================================================
+        // CÁLCULO DE PUNTOS
+        // ============================================================================
+        
+        function calculatePlayerPoints(player) {
+            const stats = player.stats;
+            let points = 0;
+            
+            // +2 por acta (partido jugado)
+            points += stats.matches * 2;
+            
+            // +4 por gol
+            points += stats.goals * 4;
+            
+            // +3 por asistencia
+            points += stats.assists * 3;
+            
+            // -3 por tarjeta roja
+            points -= stats.redCards * 3;
+            
+            return points;
+        }
+        
+        // ============================================================================
+        // DISPLAY DE MERCADO
+        // ============================================================================
+        
+        function displayMarketPlayers(searchTerm = '') {
+            const playerList = document.getElementById('playerList');
+            
+            let filteredPlayers = allPlayers.filter(player => {
+                const matchesSearch = player.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                     player.team.toLowerCase().includes(searchTerm.toLowerCase());
+                const matchesFilter = currentFilter === 'all' || player.position === currentFilter;
+                const notInTeam = !userTeam.includes(player.id);
+                
+                return matchesSearch && matchesFilter && notInTeam;
+            });
+            
+            if (filteredPlayers.length === 0) {
+                playerList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">🔍</div>
+                        <p>No se encontraron jugadores</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            playerList.innerHTML = filteredPlayers.map(player => `
+                <div class="player-item">
+                    <div class="player-info">
+                        <div class="player-name">${player.name}</div>
+                        <div class="player-meta">
+                            <span class="player-team">${player.team}</span>
+                            <span class="player-position">${player.position}</span>
+                            <span>PJ: ${player.stats.matches}</span>
+                        </div>
+                    </div>
+                    <div class="player-price">${formatMoney(player.price)}</div>
+                    <button class="btn-small btn-buy" 
+                            onclick="buyPlayer('${player.id}')"
+                            ${userData.budget < player.price ? 'disabled' : ''}>
+                        Fichar
+                    </button>
+                </div>
+            `).join('');
+        }
+        
+        // ============================================================================
+        // DISPLAY DE MI EQUIPO
+        // ============================================================================
+        
+        function displayMyTeam() {
+            const myTeamList = document.getElementById('myTeamList');
+            
+            if (userTeam.length === 0) {
+                myTeamList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">⚽</div>
+                        <p>No tienes jugadores en tu equipo</p>
+                        <p style="margin-top: 0.5rem; font-size: 0.9rem;">Ve al mercado para fichar</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            const teamPlayers = userTeam.map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
+            
+            myTeamList.innerHTML = teamPlayers.map(player => `
+                <div class="player-item">
+                    <div class="player-info">
+                        <div class="player-name">${player.name}</div>
+                        <div class="player-meta">
+                            <span class="player-team">${player.team}</span>
+                            <span class="player-position">${player.position}</span>
+                            <span>PJ: ${player.stats.matches}</span>
+                        </div>
+                    </div>
+                    <div class="player-points">${calculatePlayerPoints(player)} pts</div>
+                    <button class="btn-small btn-sell" onclick="sellPlayer('${player.id}')">
+                        Vender
+                    </button>
+                </div>
+            `).join('');
+        }
+        
+        // ============================================================================
+        // COMPRA Y VENTA DE JUGADORES
+        // ============================================================================
+        
+        async function buyPlayer(playerId) {
+            const player = allPlayers.find(p => p.id === playerId);
+            if (!player) return;
+            
+            if (userData.budget < player.price) {
+                alert('No tienes suficiente presupuesto');
+                return;
+            }
+            
+            // Actualizar datos
+            userData.budget -= player.price;
+            userTeam.push(playerId);
+            userData.team = userTeam;
+            
+            // Guardar en Firebase
+            await saveUserData();
+            
+            // Actualizar UI
+            updateUserDisplay();
+            displayMarketPlayers(document.getElementById('searchPlayer').value);
+            
+            // Mostrar mensaje
+            showSuccessMessage(`${player.name} fichado por ${formatMoney(player.price)}`);
+        }
+        
+        async function sellPlayer(playerId) {
+            const player = allPlayers.find(p => p.id === playerId);
+            if (!player) return;
+            
+            // Actualizar datos
+            userData.budget += player.price;
+            userTeam = userTeam.filter(id => id !== playerId);
+            userData.team = userTeam;
+            
+            // Guardar en Firebase
+            await saveUserData();
+            
+            // Actualizar UI
+            updateUserDisplay();
+            displayMyTeam();
+            
+            // Mostrar mensaje
+            showSuccessMessage(`${player.name} vendido por ${formatMoney(player.price)}`);
+        }
+        
+        function showSuccessMessage(message) {
+            // Crear elemento de mensaje temporal
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'success-message';
+            msgDiv.textContent = message;
+            msgDiv.style.position = 'fixed';
+            msgDiv.style.top = '100px';
+            msgDiv.style.left = '50%';
+            msgDiv.style.transform = 'translateX(-50%)';
+            msgDiv.style.zIndex = '10000';
+            msgDiv.style.maxWidth = '90%';
+            
+            document.body.appendChild(msgDiv);
+            
+            setTimeout(() => {
+                msgDiv.remove();
+            }, 3000);
+        }
+        
+        // ============================================================================
+        // FILTROS
+        // ============================================================================
+        
+        function filterPlayers(position) {
+            currentFilter = position;
+            
+            // Actualizar botones activos
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Mostrar jugadores filtrados
+            displayMarketPlayers(document.getElementById('searchPlayer').value);
+        }
+        
+        // ============================================================================
+        // RANKINGS
+        // ============================================================================
+        
+        async function loadRankings() {
+            const rankingsList = document.getElementById('rankingsList');
+            
+            try {
+                const snapshot = await db.collection('users')
+                    .orderBy('points', 'desc')
+                    .limit(50)
+                    .get();
+                
+                if (snapshot.empty) {
+                    rankingsList.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-icon">🏆</div>
+                            <p>No hay datos de clasificación</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const rankings = snapshot.docs.map((doc, index) => {
+                    const data = doc.data();
+                    return {
+                        position: index + 1,
+                        name: data.name,
+                        points: data.points || 0,
+                        isCurrentUser: doc.id === currentUser.uid
+                    };
+                });
+                
+                // Actualizar ranking del usuario actual
+                const userRank = rankings.find(r => r.isCurrentUser);
+                if (userRank) {
+                    document.getElementById('userRanking').textContent = userRank.position;
+                }
+                
+                rankingsList.innerHTML = rankings.map(rank => `
+                    <div class="ranking-item ${rank.isCurrentUser ? 'ranking-item-current' : ''}">
+                        <div class="ranking-position">${rank.position}</div>
+                        <div class="ranking-info">
+                            <div class="ranking-name">
+                                ${rank.name} ${rank.isCurrentUser ? '(Tú)' : ''}
+                            </div>
+                            <div class="ranking-team">${rank.isCurrentUser ? 'Tu equipo' : 'Rival'}</div>
+                        </div>
+                        <div class="ranking-points">${rank.points}</div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error cargando rankings:', error);
+                rankingsList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">❌</div>
+                        <p>Error cargando clasificación</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // ============================================================================
+        // NAVEGACIÓN
+        // ============================================================================
+        
+        function switchView(viewName) {
+            // Ocultar todas las vistas
+            document.querySelectorAll('.view').forEach(view => {
+                view.classList.remove('active');
+            });
+            
+            // Remover clase active de todos los nav items
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // Mostrar vista seleccionada
+            const viewMap = {
+                'home': 'homeView',
+                'market': 'marketView',
+                'team': 'teamView',
+                'rankings': 'rankingsView'
+            };
+            
+            document.getElementById(viewMap[viewName]).classList.add('active');
+            event.target.closest('.nav-item').classList.add('active');
+            
+            // Recargar datos si es necesario
+            if (viewName === 'rankings') {
+                loadRankings();
+            } else if (viewName === 'team') {
+                displayMyTeam();
+            }
+        }
+        
+        // ============================================================================
+        // FUNCIÓN PARA SCRAPING DE ISQUAD (PARA IMPLEMENTAR)
+        // ============================================================================
+        
+        /*
+        async function fetchIsquadData(leagueUrl) {
+            // Esta función requiere el proxy de Google Apps Script
+            if (!PROXY_URL || PROXY_URL === "TU_GOOGLE_APPS_SCRIPT_URL") {
+                console.warn('Proxy URL no configurada. Usando datos de ejemplo.');
+                return null;
+            }
+            
+            try {
+                const response = await fetch(`${PROXY_URL}?url=${encodeURIComponent(leagueUrl)}`);
+                const html = await response.text();
+                
+                // Aquí deberías parsear el HTML para extraer:
+                // - Nombres de jugadores
+                // - Equipos
+                // - Estadísticas (partidos, goles, asistencias, tarjetas)
+                
+                // Ejemplo de parsing (necesitarás ajustarlo a la estructura real):
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                // const players = [];
+                // doc.querySelectorAll('.player-row').forEach(row => {
+                //     players.push({
+                //         name: row.querySelector('.player-name').textContent,
+                //         team: row.querySelector('.team-name').textContent,
+                //         // ... más datos
+                //     });
+                // });
+                
+                return null; // Retornar datos parseados
+            } catch (error) {
+                console.error('Error fetching Isquad data:', error);
+                return null;
+            }
+        }
+        
+        // Función para actualizar todos los jugadores desde Isquad
+        async function updatePlayersFromIsquad() {
+            const leagues = [
+                'https://resultadosffcv.isquad.es/total_partidos.php?id_temp=21&id_modalidad=33327&id_competicion=29509377',
+                'https://resultadosffcv.isquad.es/total_partidos.php?id_temp=21&id_modalidad=33327&id_competicion=29509166',
+                'https://resultadosffcv.isquad.es/total_partidos.php?id_temp=21&id_modalidad=33327&id_competicion=29509171',
+                'https://resultadosffcv.isquad.es/total_partidos.php?id_temp=21&id_modalidad=33327&id_competicion=29509180'
+            ];
+            
+            for (const leagueUrl of leagues) {
+                const data = await fetchIsquadData(leagueUrl);
+                if (data) {
+                    // Procesar y guardar en Firestore
+                }
+            }
+        }
+        */
+    </script>
+</body>
+</html>
